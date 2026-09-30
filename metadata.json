@@ -1,0 +1,6 @@
+{
+  "name": "InterviewIQ",
+  "description": "AI Smart Interview Analyzer using NLP and emotion detection. Practice realistic interviews, analyze your answers, and receive personalized feedback.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

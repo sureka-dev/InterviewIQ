@@ -1,0 +1,483 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { 
+  Printer, 
+  Download, 
+  RotateCcw, 
+  FileText, 
+  CheckCircle2, 
+  Brain, 
+  ShieldCheck, 
+  Smile, 
+  MessageSquare,
+  Award,
+  Clock,
+  Calendar,
+  Sparkles,
+  ArrowRight,
+  Film
+} from 'lucide-react';
+import { Button } from '../components/Button';
+import { ScoreRing } from '../components/ScoreRing';
+import { ScoreBar } from '../components/ScoreBar';
+import { EmotionMeter } from '../components/EmotionMeter';
+import { RadarChart } from '../components/RadarChart';
+import { EmptyStateGraphic } from '../components/EmptyStateGraphic';
+import { getInterviewSessionById, getInterviewSessions } from '../lib/storage';
+import { getRecordedVideoBlob } from '../lib/videoStorage';
+import { InterviewSession } from '../types';
+
+export const ReportPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const sessionId = searchParams.get('sessionId');
+
+  const [session, setSession] = useState<InterviewSession | null>(null);
+  const [videoUrls, setVideoUrls] = useState<{ [qId: string]: string }>({});
+
+  useEffect(() => {
+    let targetSession: InterviewSession | null = null;
+    if (sessionId) {
+      targetSession = getInterviewSessionById(sessionId);
+    }
+
+    if (!targetSession) {
+      const allSessions = getInterviewSessions();
+      if (allSessions.length > 0) {
+        targetSession = allSessions[0];
+      }
+    }
+
+    setSession(targetSession);
+
+    if (targetSession) {
+      targetSession.answers.forEach(async (ans) => {
+        if (ans.hasVideoRecording) {
+          const blob = await getRecordedVideoBlob(`video_${ans.questionId}`);
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            setVideoUrls(prev => ({ ...prev, [ans.questionId]: url }));
+          }
+        }
+      });
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(videoUrls).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [videoUrls]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownload = () => {
+    if (!session) return;
+
+    const evalData = session.aggregatedEvaluation;
+    const reportText = `=====================================================
+INTERVIEWIQ — OFFICIAL CANDIDATE ASSESSMENT REPORT
+"Practice Smarter. Interview Better."
+=====================================================
+
+Track: ${session.categoryName}
+Date: ${session.dateFormatted}
+Session ID: ${session.id}
+Overall Performance Score: ${evalData.overallScore} / 100
+Calculated Poise Level: ${evalData.confidence.level}
+Primary Emotional Tone: ${evalData.emotion.primaryEmotion}
+Communication Articulation: ${evalData.communication.score}%
+
+-----------------------------------------------------
+1. LINGUISTIC NLP BREAKDOWN (CALCULATED FROM TRANSCRIPT)
+-----------------------------------------------------
+• Relevance to Question: ${evalData.nlp.relevance}%
+• Syntactic Clarity: ${evalData.nlp.clarity}%
+• Vocabulary Richness: ${evalData.nlp.vocabulary}%
+• Grammar & Mechanics: ${evalData.nlp.grammar}%
+• Filler Words Score: ${evalData.nlp.fillerWordsScore}% (${evalData.nlp.fillerWordsCount} detected)
+• Confidence Assertiveness: ${evalData.confidence.score}%
+• Spoken Word Count: ${evalData.nlp.wordCount} words
+• Estimated Speaking Duration: ${evalData.nlp.estimatedSpeakingSeconds} seconds
+
+-----------------------------------------------------
+2. OBSERVED STRENGTHS
+-----------------------------------------------------
+${evalData.strengths.length > 0 ? evalData.strengths.map(s => `• ${s}`).join('\n') : '• Baseline response completed.'}
+
+-----------------------------------------------------
+3. AREAS FOR IMPROVEMENT
+-----------------------------------------------------
+${evalData.weaknesses.length > 0 ? evalData.weaknesses.map(w => `• ${w}`).join('\n') : '• No major structural deficiencies identified.'}
+
+-----------------------------------------------------
+4. PERSONALIZED SUGGESTIONS
+-----------------------------------------------------
+${evalData.suggestions.length > 0 ? evalData.suggestions.map(s => `• ${s}`).join('\n') : '• Continue practicing with STAR structure.'}
+
+-----------------------------------------------------
+5. QUESTION-BY-QUESTION TRANSCRIPT & FEEDBACK
+-----------------------------------------------------
+${session.answers.map((ans, idx) => `
+[QUESTION ${idx + 1}]: "${ans.questionPrompt}"
+Candidate Transcript: "${ans.userAnswer || 'No answer recorded yet.'}"
+Score: ${ans.evaluation.overallScore}/100 | Confidence: ${ans.evaluation.confidence.score}%
+Keywords Matched: ${ans.evaluation.nlp.detectedKeywords.join(', ') || 'None'}
+Filler Words Detected: ${ans.evaluation.nlp.fillerWordsCount}
+`).join('\n')}
+=====================================================
+Generated by InterviewIQ Client NLP Engine
+`;
+
+    const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `interviewiq-report-${session.category}-${session.id.slice(-6)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Pure Empty State if user has not completed an interview yet
+  if (!session) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-24 text-center space-y-5 animate-fade-in">
+        <EmptyStateGraphic variant="document" className="w-28 h-28 mx-auto" />
+        <h2 className="font-serif text-3xl font-bold text-[#1C1917]">
+          Your report will appear here.
+        </h2>
+        <p className="text-sm text-[#57534E] max-w-md mx-auto leading-relaxed">
+          Complete an interview to receive your personalized feedback.
+        </p>
+        <div className="pt-2">
+          <Link to="/practice">
+            <Button size="lg" variant="primary" icon={<ArrowRight className="w-4 h-4" />}>
+              Start Your First Interview
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const evalData = session.aggregatedEvaluation;
+
+  const radarData = [
+    { dimension: 'Relevance', value: evalData.nlp.relevance },
+    { dimension: 'Clarity', value: evalData.nlp.clarity },
+    { dimension: 'Vocabulary', value: evalData.nlp.vocabulary },
+    { dimension: 'Confidence', value: evalData.confidence.score },
+    { dimension: 'Structure', value: evalData.communication.score },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14 space-y-8">
+      
+      {/* Top Action Bar (Hidden on print) */}
+      <div className="flex flex-wrap items-center justify-between pb-6 border-b border-[#E7E2DA] gap-4 no-print">
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#E65A3C]">
+            Official Assessment Report
+          </span>
+          <h1 className="font-serif text-3xl font-bold text-[#1C1917] mt-1">
+            Candidate Performance Dossier
+          </h1>
+          <p className="text-xs text-[#78716C] mt-1">
+            Generated from your real recorded video session and verbatim spoken transcript.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePrint}
+            icon={<Printer className="w-4 h-4" />}
+          >
+            Print Report
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleDownload}
+            icon={<Download className="w-4 h-4" />}
+          >
+            Download Report
+          </Button>
+          <Link to="/practice">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<RotateCcw className="w-4 h-4" />}
+            >
+              Practice Again
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Official Report Document Container */}
+      <div className="bg-white rounded-2xl border border-[#E2DDD5] shadow-sm p-8 md:p-12 space-y-10 print-page">
+        
+        {/* Document Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-8 border-b-2 border-[#1C1917] gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-serif text-2xl font-bold tracking-tight text-[#1C1917]">
+                Interview<span className="text-[#E65A3C]">IQ</span>
+              </span>
+              <span className="text-xs uppercase tracking-wider font-mono text-[#78716C] bg-[#FAF8F5] border border-[#EAE5DC] px-2 py-0.5 rounded">
+                Authentic Candidate Assessment
+              </span>
+            </div>
+            <p className="text-xs text-[#57534E]">
+              Client-Side NLP & Delivery Analytics · Python/FastAPI Backend Ready
+            </p>
+          </div>
+
+          <div className="text-left sm:text-right text-xs text-[#78716C] space-y-1">
+            <div>
+              <span className="font-medium text-[#1C1917]">Track:</span> {session.categoryName}
+            </div>
+            <div>
+              <span className="font-medium text-[#1C1917]">Date:</span> {session.dateFormatted}
+            </div>
+            <div>
+              <span className="font-medium text-[#1C1917]">Prompts Completed:</span> {session.answers.length}
+            </div>
+          </div>
+        </div>
+
+        {/* Executive Score & Overview Banner */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center bg-[#FAF8F5] p-6 rounded-2xl border border-[#ECE7DF]">
+          <div className="md:col-span-4 flex justify-center">
+            <ScoreRing
+              score={evalData.overallScore}
+              size={130}
+              strokeWidth={9}
+              showGrade={true}
+            />
+          </div>
+
+          <div className="md:col-span-8 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider text-[#E65A3C] font-semibold">
+                Composite Performance
+              </span>
+            </div>
+            <h2 className="font-serif text-2xl font-bold text-[#1C1917]">
+              {evalData.overallScore >= 80 ? 'Proficient Candidate Delivery' : (evalData.overallScore >= 60 ? 'Competent Delivery' : 'Developing Candidate Poise')}
+            </h2>
+            <p className="text-xs text-[#57534E] leading-relaxed">
+              {evalData.confidence.summary} Evaluated from {evalData.nlp.wordCount} words across {session.answers.length} response(s).
+            </p>
+
+            <div className="pt-2 flex flex-wrap gap-4 text-xs font-mono">
+              <span className="text-[#1B4332] bg-[#E8F2EC] px-2.5 py-1 rounded-md font-semibold">
+                Poise: {evalData.confidence.level}
+              </span>
+              <span className="text-[#E65A3C] bg-[#FDF2F0] px-2.5 py-1 rounded-md font-semibold">
+                Tone: {evalData.emotion.primaryEmotion}
+              </span>
+              <span className="text-[#1C1917] bg-white border border-[#E7E2DA] px-2.5 py-1 rounded-md font-semibold">
+                Fillers: {evalData.nlp.fillerWordsCount} detected
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2-Column: Real Score Breakdown & Competency Radar */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          
+          {/* Score Breakdown Bars */}
+          <div className="space-y-4">
+            <h3 className="font-serif text-lg font-bold text-[#1C1917] pb-2 border-b border-[#F0ECE4]">
+              Score Breakdown
+            </h3>
+            <ScoreBar label="Relevance to Job Criteria" value={evalData.nlp.relevance} />
+            <ScoreBar label="Syntactic Clarity" value={evalData.nlp.clarity} />
+            <ScoreBar label="Domain Vocabulary" value={evalData.nlp.vocabulary} />
+            <ScoreBar label="Grammar & Mechanics" value={evalData.nlp.grammar} />
+            <ScoreBar label="Verbal Discipline (No Fillers)" value={evalData.nlp.fillerWordsScore} />
+            <ScoreBar label="Delivery Confidence" value={evalData.confidence.score} />
+            <ScoreBar label="Communication Structure" value={evalData.communication.score} />
+          </div>
+
+          {/* Radar Chart & Real Emotion */}
+          <div className="space-y-4">
+            <h3 className="font-serif text-lg font-bold text-[#1C1917] pb-2 border-b border-[#F0ECE4]">
+              Poise Profile
+            </h3>
+            <div className="flex justify-center py-2">
+              <RadarChart data={radarData} size={220} />
+            </div>
+            <div className="pt-2">
+              <EmotionMeter emotion={evalData.emotion} compact={true} />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Strengths, Weaknesses, Suggestions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-[#F0ECE4]">
+          
+          <div className="space-y-2">
+            <h4 className="text-xs uppercase tracking-wider font-semibold text-[#1B4332] flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" />
+              Strengths
+            </h4>
+            <ul className="space-y-1.5 text-xs text-[#57534E]">
+              {evalData.strengths.length > 0 ? (
+                evalData.strengths.map((str, idx) => (
+                  <li key={idx} className="leading-relaxed">
+                    • {str}
+                  </li>
+                ))
+              ) : (
+                <li className="italic text-[#78716C]">• Provide longer responses to establish strengths.</li>
+              )}
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-xs uppercase tracking-wider font-semibold text-[#B45309] flex items-center gap-1.5">
+              <span>!</span>
+              Weaknesses
+            </h4>
+            <ul className="space-y-1.5 text-xs text-[#57534E]">
+              {evalData.weaknesses.map((w, idx) => (
+                <li key={idx} className="leading-relaxed">
+                  • {w}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-xs uppercase tracking-wider font-semibold text-[#E65A3C] flex items-center gap-1.5">
+              <span>→</span>
+              Suggestions
+            </h4>
+            <ul className="space-y-1.5 text-xs text-[#57534E]">
+              {evalData.suggestions.map((sug, idx) => (
+                <li key={idx} className="leading-relaxed">
+                  • {sug}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+        </div>
+
+        {/* Question-by-Question Analysis & Real Transcripts */}
+        <div className="space-y-6 pt-6 border-t border-[#EAE5DC]">
+          <h3 className="font-serif text-2xl font-bold text-[#1C1917]">
+            Question-by-Question Transcript & Diagnostics
+          </h3>
+
+          <div className="space-y-6">
+            {session.answers.map((answerRecord, idx) => (
+              <div
+                key={answerRecord.questionId}
+                className="p-6 rounded-xl bg-[#FAF8F5] border border-[#ECE7DF] space-y-4"
+              >
+                {/* Question Header */}
+                <div className="flex flex-wrap items-center justify-between pb-3 border-b border-[#EAE5DC] gap-2">
+                  <span className="text-xs font-bold text-[#E65A3C] uppercase tracking-wider">
+                    Question {idx + 1}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="font-mono text-[#78716C]">{answerRecord.timeSpentSeconds}s duration</span>
+                    <span className="font-semibold text-[#1C1917] bg-white border border-[#E7E2DA] px-2 py-0.5 rounded">
+                      Score: {answerRecord.evaluation.overallScore}/100
+                    </span>
+                  </div>
+                </div>
+
+                {/* Prompt */}
+                <h4 className="font-serif text-base font-bold text-[#1C1917]">
+                  "{answerRecord.questionPrompt}"
+                </h4>
+
+                {/* Recorded Video preview if available */}
+                {videoUrls[answerRecord.questionId] && (
+                  <div className="no-print">
+                    <span className="text-[11px] uppercase tracking-wider text-[#78716C] font-semibold block mb-1">
+                      Recorded Video Response
+                    </span>
+                    <video
+                      src={videoUrls[answerRecord.questionId]}
+                      controls
+                      className="w-full max-h-56 rounded-lg bg-black border border-[#E7E2DA]"
+                    />
+                  </div>
+                )}
+
+                {/* Verbatim Candidate Transcript */}
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-[#78716C] font-semibold block mb-1">
+                    Candidate Spoken Transcript ({answerRecord.evaluation.nlp.wordCount} words)
+                  </span>
+                  <p className="text-xs text-[#57534E] leading-relaxed bg-white p-3.5 rounded-lg border border-[#EAE5DC] italic">
+                    {answerRecord.userAnswer ? `"${answerRecord.userAnswer}"` : "No answer recorded yet."}
+                  </p>
+                </div>
+
+                {/* Question Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2 rounded bg-white border border-[#EAE5DC]">
+                    <span className="text-[10px] text-[#78716C] block">Relevance</span>
+                    <strong className="text-[#1C1917]">{answerRecord.evaluation.nlp.relevance}%</strong>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-[#EAE5DC]">
+                    <span className="text-[10px] text-[#78716C] block">Clarity</span>
+                    <strong className="text-[#1C1917]">{answerRecord.evaluation.nlp.clarity}%</strong>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-[#EAE5DC]">
+                    <span className="text-[10px] text-[#78716C] block">Confidence</span>
+                    <strong className="text-[#1C1917]">{answerRecord.evaluation.confidence.score}%</strong>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-[#EAE5DC]">
+                    <span className="text-[10px] text-[#78716C] block">Tone</span>
+                    <strong className="text-[#1C1917]">{answerRecord.evaluation.emotion.primaryEmotion}</strong>
+                  </div>
+                </div>
+
+                {/* Detected Keywords in this answer */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="text-[#78716C] text-[11px]">Keywords matched:</span>
+                  {answerRecord.evaluation.nlp.detectedKeywords.map(k => (
+                    <span key={k} className="px-2 py-0.5 rounded bg-[#E8F2EC] text-[#1B4332] text-[11px] font-medium border border-[#C5DED0]">
+                      {k}
+                    </span>
+                  ))}
+                  {answerRecord.evaluation.nlp.detectedKeywords.length === 0 && (
+                    <span className="text-[#A8A29E] text-[11px] italic">None</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Backend Pipeline Status Notice in Report */}
+        <div className="p-4 rounded-xl bg-[#FAF8F5] border border-[#ECE7DF] text-xs text-[#57534E] space-y-1">
+          <strong className="text-[#1C1917] block">Multi-Modal Backend Video Analysis:</strong>
+          <p>
+            Facial emotion analysis, voice pitch variance, eye-contact estimation, and posture tracking are architecture-staged for our upcoming Python/FastAPI microservice. Current assessment was calculated strictly from candidate transcript, timing, and linguistic markers.
+          </p>
+        </div>
+
+        {/* Official Document Footer Stamp */}
+        <div className="pt-8 border-t-2 border-[#1C1917] flex flex-col sm:flex-row items-center justify-between text-xs text-[#78716C] gap-2">
+          <span>Official Evaluation generated by InterviewIQ Linguistic Engine</span>
+          <span className="font-mono">Verification: #{session.id.slice(-8).toUpperCase()}</span>
+        </div>
+
+      </div>
+
+    </div>
+  );
+};
